@@ -59,6 +59,7 @@ func NewKubeFed2Command(out io.Writer) *cobra.Command {
 	rootCmd.AddCommand(federate.NewCmdFederateResource(out, fedConfig))
 	rootCmd.AddCommand(NewCmdJoin(out, fedConfig))
 	rootCmd.AddCommand(NewCmdUnjoin(out, fedConfig))
+	rootCmd.AddCommand(NewCmdProxy(out, fedConfig))
 	rootCmd.AddCommand(NewCmdVersion(out))
 
 	return rootCmd
