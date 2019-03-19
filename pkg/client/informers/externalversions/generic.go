@@ -23,6 +23,7 @@ import (
 
 	v1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/core/v1alpha1"
 	multiclusterdns_v1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/multiclusterdns/v1alpha1"
+	proxy_v1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/proxy/v1alpha1"
 	scheduling_v1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/scheduling/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
@@ -75,6 +76,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Multiclusterdns().V1alpha1().IngressDNSRecords().Informer()}, nil
 	case multiclusterdns_v1alpha1.SchemeGroupVersion.WithResource("servicednsrecords"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Multiclusterdns().V1alpha1().ServiceDNSRecords().Informer()}, nil
+
+		// Group=proxy.federation.k8s.io, Version=v1alpha1
+	case proxy_v1alpha1.SchemeGroupVersion.WithResource("namespaceplacements"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Proxy().V1alpha1().NamespacePlacements().Informer()}, nil
 
 		// Group=scheduling.federation.k8s.io, Version=v1alpha1
 	case scheduling_v1alpha1.SchemeGroupVersion.WithResource("replicaschedulingpreferences"):

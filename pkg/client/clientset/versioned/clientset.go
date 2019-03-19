@@ -21,6 +21,7 @@ package versioned
 import (
 	corev1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/client/clientset/versioned/typed/core/v1alpha1"
 	multiclusterdnsv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/client/clientset/versioned/typed/multiclusterdns/v1alpha1"
+	proxyv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/client/clientset/versioned/typed/proxy/v1alpha1"
 	schedulingv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
@@ -35,6 +36,9 @@ type Interface interface {
 	MulticlusterdnsV1alpha1() multiclusterdnsv1alpha1.MulticlusterdnsV1alpha1Interface
 	// Deprecated: please explicitly pick a version if possible.
 	Multiclusterdns() multiclusterdnsv1alpha1.MulticlusterdnsV1alpha1Interface
+	ProxyV1alpha1() proxyv1alpha1.ProxyV1alpha1Interface
+	// Deprecated: please explicitly pick a version if possible.
+	Proxy() proxyv1alpha1.ProxyV1alpha1Interface
 	SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface
 	// Deprecated: please explicitly pick a version if possible.
 	Scheduling() schedulingv1alpha1.SchedulingV1alpha1Interface
@@ -46,6 +50,7 @@ type Clientset struct {
 	*discovery.DiscoveryClient
 	coreV1alpha1            *corev1alpha1.CoreV1alpha1Client
 	multiclusterdnsV1alpha1 *multiclusterdnsv1alpha1.MulticlusterdnsV1alpha1Client
+	proxyV1alpha1           *proxyv1alpha1.ProxyV1alpha1Client
 	schedulingV1alpha1      *schedulingv1alpha1.SchedulingV1alpha1Client
 }
 
@@ -69,6 +74,17 @@ func (c *Clientset) MulticlusterdnsV1alpha1() multiclusterdnsv1alpha1.Multiclust
 // Please explicitly pick a version.
 func (c *Clientset) Multiclusterdns() multiclusterdnsv1alpha1.MulticlusterdnsV1alpha1Interface {
 	return c.multiclusterdnsV1alpha1
+}
+
+// ProxyV1alpha1 retrieves the ProxyV1alpha1Client
+func (c *Clientset) ProxyV1alpha1() proxyv1alpha1.ProxyV1alpha1Interface {
+	return c.proxyV1alpha1
+}
+
+// Deprecated: Proxy retrieves the default version of ProxyClient.
+// Please explicitly pick a version.
+func (c *Clientset) Proxy() proxyv1alpha1.ProxyV1alpha1Interface {
+	return c.proxyV1alpha1
 }
 
 // SchedulingV1alpha1 retrieves the SchedulingV1alpha1Client
@@ -106,6 +122,10 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
+	cs.proxyV1alpha1, err = proxyv1alpha1.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
 	cs.schedulingV1alpha1, err = schedulingv1alpha1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
@@ -124,6 +144,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
 	cs.coreV1alpha1 = corev1alpha1.NewForConfigOrDie(c)
 	cs.multiclusterdnsV1alpha1 = multiclusterdnsv1alpha1.NewForConfigOrDie(c)
+	cs.proxyV1alpha1 = proxyv1alpha1.NewForConfigOrDie(c)
 	cs.schedulingV1alpha1 = schedulingv1alpha1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
@@ -135,6 +156,7 @@ func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.coreV1alpha1 = corev1alpha1.New(c)
 	cs.multiclusterdnsV1alpha1 = multiclusterdnsv1alpha1.New(c)
+	cs.proxyV1alpha1 = proxyv1alpha1.New(c)
 	cs.schedulingV1alpha1 = schedulingv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

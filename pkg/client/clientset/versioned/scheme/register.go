@@ -21,6 +21,7 @@ package scheme
 import (
 	corev1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/core/v1alpha1"
 	multiclusterdnsv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/multiclusterdns/v1alpha1"
+	proxyv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/proxy/v1alpha1"
 	schedulingv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/scheduling/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -54,5 +55,6 @@ func init() {
 func AddToScheme(scheme *runtime.Scheme) {
 	corev1alpha1.AddToScheme(scheme)
 	multiclusterdnsv1alpha1.AddToScheme(scheme)
+	proxyv1alpha1.AddToScheme(scheme)
 	schedulingv1alpha1.AddToScheme(scheme)
 }

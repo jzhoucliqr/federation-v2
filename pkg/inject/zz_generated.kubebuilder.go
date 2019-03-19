@@ -19,8 +19,10 @@ package inject
 import (
 	corev1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/core/v1alpha1"
 	multiclusterdnsv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/multiclusterdns/v1alpha1"
+	proxyv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/proxy/v1alpha1"
 	schedulingv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/scheduling/v1alpha1"
 	rscheme "github.com/kubernetes-sigs/federation-v2/pkg/client/clientset/versioned/scheme"
+	"github.com/kubernetes-sigs/federation-v2/pkg/controller/namespaceplacement"
 	"github.com/kubernetes-sigs/federation-v2/pkg/inject/args"
 	"github.com/kubernetes-sigs/kubebuilder/pkg/inject/run"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -62,12 +64,20 @@ func init() {
 		if err := arguments.ControllerManager.AddInformerProvider(&multiclusterdnsv1alpha1.ServiceDNSRecord{}, arguments.Informers.Multiclusterdns().V1alpha1().ServiceDNSRecords()); err != nil {
 			return err
 		}
+		if err := arguments.ControllerManager.AddInformerProvider(&proxyv1alpha1.NamespacePlacement{}, arguments.Informers.Proxy().V1alpha1().NamespacePlacements()); err != nil {
+			return err
+		}
 		if err := arguments.ControllerManager.AddInformerProvider(&schedulingv1alpha1.ReplicaSchedulingPreference{}, arguments.Informers.Scheduling().V1alpha1().ReplicaSchedulingPreferences()); err != nil {
 			return err
 		}
 
 		// Add Kubernetes informers
 
+		if c, err := namespaceplacement.ProvideController(arguments); err != nil {
+			return err
+		} else {
+			arguments.ControllerManager.AddController(c)
+		}
 		return nil
 	})
 
@@ -81,6 +91,7 @@ func init() {
 	Injector.CRDs = append(Injector.CRDs, &multiclusterdnsv1alpha1.DomainCRD)
 	Injector.CRDs = append(Injector.CRDs, &multiclusterdnsv1alpha1.IngressDNSRecordCRD)
 	Injector.CRDs = append(Injector.CRDs, &multiclusterdnsv1alpha1.ServiceDNSRecordCRD)
+	Injector.CRDs = append(Injector.CRDs, &proxyv1alpha1.NamespacePlacementCRD)
 	Injector.CRDs = append(Injector.CRDs, &schedulingv1alpha1.ReplicaSchedulingPreferenceCRD)
 	// Inject PolicyRules
 	Injector.PolicyRules = append(Injector.PolicyRules, rbacv1.PolicyRule{
@@ -90,6 +101,11 @@ func init() {
 	})
 	Injector.PolicyRules = append(Injector.PolicyRules, rbacv1.PolicyRule{
 		APIGroups: []string{"multiclusterdns.federation.k8s.io"},
+		Resources: []string{"*"},
+		Verbs:     []string{"*"},
+	})
+	Injector.PolicyRules = append(Injector.PolicyRules, rbacv1.PolicyRule{
+		APIGroups: []string{"proxy.federation.k8s.io"},
 		Resources: []string{"*"},
 		Verbs:     []string{"*"},
 	})
@@ -105,6 +121,10 @@ func init() {
 	})
 	Injector.GroupVersions = append(Injector.GroupVersions, schema.GroupVersion{
 		Group:   "multiclusterdns.federation.k8s.io",
+		Version: "v1alpha1",
+	})
+	Injector.GroupVersions = append(Injector.GroupVersions, schema.GroupVersion{
+		Group:   "proxy.federation.k8s.io",
 		Version: "v1alpha1",
 	})
 	Injector.GroupVersions = append(Injector.GroupVersions, schema.GroupVersion{

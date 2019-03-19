@@ -27,6 +27,7 @@ import (
 	core "github.com/kubernetes-sigs/federation-v2/pkg/client/informers/externalversions/core"
 	internalinterfaces "github.com/kubernetes-sigs/federation-v2/pkg/client/informers/externalversions/internalinterfaces"
 	multiclusterdns "github.com/kubernetes-sigs/federation-v2/pkg/client/informers/externalversions/multiclusterdns"
+	proxy "github.com/kubernetes-sigs/federation-v2/pkg/client/informers/externalversions/proxy"
 	scheduling "github.com/kubernetes-sigs/federation-v2/pkg/client/informers/externalversions/scheduling"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -176,6 +177,7 @@ type SharedInformerFactory interface {
 
 	Core() core.Interface
 	Multiclusterdns() multiclusterdns.Interface
+	Proxy() proxy.Interface
 	Scheduling() scheduling.Interface
 }
 
@@ -185,6 +187,10 @@ func (f *sharedInformerFactory) Core() core.Interface {
 
 func (f *sharedInformerFactory) Multiclusterdns() multiclusterdns.Interface {
 	return multiclusterdns.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Proxy() proxy.Interface {
+	return proxy.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Scheduling() scheduling.Interface {

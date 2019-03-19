@@ -17,6 +17,7 @@ limitations under the License.
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"golang.org/x/sys/unix"
@@ -29,10 +30,15 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	genericclient "github.com/kubernetes-sigs/federation-v2/pkg/client/generic"
+	ctlutil "github.com/kubernetes-sigs/federation-v2/pkg/controller/util"
+	apiv1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	"k8s.io/apiserver/pkg/authentication/request/x509"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/transport"
@@ -154,6 +160,11 @@ func (f *FilterServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 // Server is a http.Handler which proxies Kubernetes APIs to remote API server.
 type Server struct {
 	handler http.Handler
+
+	// client to central registry
+	// used to get neighbor clusters
+	// also used to get namespace placement
+	client *genericclient.Client
 }
 
 type responder struct{}
@@ -210,7 +221,43 @@ func NewServer(filebase string, apiProxyPrefix string, staticPrefix string, filt
 		// serving their working directory by default.
 		mux.Handle(staticPrefix, newFileHandler(staticPrefix, filebase))
 	}
-	return &Server{handler: mux}, nil
+
+	// init generic client, get secret using cfg, then get config to central cluster
+	config, err := getCentralRegistryConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	glog.V(1).Info("after get central config")
+	client := genericclient.NewForConfigOrDieWithUserAgent(config, "Proxy")
+	glog.V(1).Info("after get client ")
+
+	secret := &apiv1.Secret{}
+	err = client.Get(context.TODO(), secret, "default", "kubeconfig-central")
+	if err != nil {
+		return nil, err
+	}
+	glog.V(1).Infof("sec: %v", *secret)
+
+	return &Server{
+		handler: mux,
+		client:  &client,
+	}, nil
+}
+
+func getCentralRegistryConfig(cfg *rest.Config) (*rest.Config, error) {
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	namespace := "federation-system"
+	secret, err := clientset.CoreV1().Secrets(namespace).Get("kubeconfig-central", metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	kubeconfigGetter := ctlutil.KubeconfigGetterForSecret(secret)
+	centralConfig, err := clientcmd.BuildConfigFromKubeconfigGetter("", kubeconfigGetter)
+	return centralConfig, err
 }
 
 func newAuthenticatorFromClientCAFile(clientCAFile string) (authenticator.Request, error) {
