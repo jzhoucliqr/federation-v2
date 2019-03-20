@@ -1,0 +1,18 @@
+---
+apiVersion: proxy.federation.k8s.io/v1alpha1
+kind: NamespacePlacement
+metadata:
+  name: test1
+spec:
+  masterCluster: cluster1
+  workerClusters:
+  - cluster1
+---
+apiVersion: proxy.federation.k8s.io/v1alpha1
+kind: NamespacePlacement
+metadata:
+  name: test2
+spec:
+  masterCluster: cluster2
+  workerClusters:
+  - cluster2

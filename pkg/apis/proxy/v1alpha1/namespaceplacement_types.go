@@ -29,8 +29,8 @@ import (
 type NamespacePlacementSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "kubebuilder generate" to regenerate code after modifying this file
-	MasterCluster  string   `json:"mastercluster,omitempty"`
-	WorkerClusters []string `json:"workercluster,omitempty"`
+	MasterCluster  string   `json:"masterCluster,omitempty"`
+	WorkerClusters []string `json:"workerCluster,omitempty"`
 }
 
 // NamespacePlacementStatus defines the observed state of NamespacePlacement

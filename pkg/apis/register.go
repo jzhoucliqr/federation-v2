@@ -19,6 +19,7 @@ package apis
 import (
 	corev1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/core/v1alpha1"
 	multiclusterdnsv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/multiclusterdns/v1alpha1"
+	proxyv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/proxy/v1alpha1"
 	schedulingv1alpha1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/scheduling/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -33,6 +34,7 @@ var localSchemeBuilder = runtime.SchemeBuilder{
 	corev1alpha1.AddToScheme,
 	multiclusterdnsv1alpha1.AddToScheme,
 	schedulingv1alpha1.AddToScheme,
+	proxyv1alpha1.AddToScheme,
 }
 
 func init() {

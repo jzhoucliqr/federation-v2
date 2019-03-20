@@ -1,0 +1,31 @@
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: namespaceplacements.proxy.federation.k8s.io
+spec:
+  version: v1alpha1
+  group: proxy.federation.k8s.io
+  names:
+    kind: NamespacePlacement
+    plural: namespaceplacements
+    shortNames:
+    - np
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        metadata:
+          type: object
+        spec:
+          properties:
+            masterCluster:
+              type: string
+            workerClusters:
+              type: array
+              items:
+                type: string

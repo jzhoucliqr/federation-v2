@@ -30,6 +30,8 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	fedv1a1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/core/v1alpha1"
+	proxyv1a1 "github.com/kubernetes-sigs/federation-v2/pkg/apis/proxy/v1alpha1"
 	genericclient "github.com/kubernetes-sigs/federation-v2/pkg/client/generic"
 	ctlutil "github.com/kubernetes-sigs/federation-v2/pkg/controller/util"
 	apiv1 "k8s.io/api/core/v1"
@@ -210,18 +212,6 @@ func makeUpgradeTransport(config *rest.Config, keepalive time.Duration) (proxy.U
 // NewServer creates and installs a new Server.
 // 'filter', if non-nil, protects requests to the api only.
 func NewServer(filebase string, apiProxyPrefix string, staticPrefix string, filter *FilterServer, cfg *rest.Config, keepalive time.Duration) (*Server, error) {
-	proxyServer, err := newTopProxyHandler(filebase, apiProxyPrefix, staticPrefix, filter, cfg, keepalive)
-	if err != nil {
-		return nil, err
-	}
-	mux := http.NewServeMux()
-	mux.Handle(apiProxyPrefix, proxyServer)
-	if filebase != "" {
-		// Require user to explicitly request this behavior rather than
-		// serving their working directory by default.
-		mux.Handle(staticPrefix, newFileHandler(staticPrefix, filebase))
-	}
-
 	// init generic client, get secret using cfg, then get config to central cluster
 	config, err := getCentralRegistryConfig(cfg)
 	if err != nil {
@@ -237,7 +227,18 @@ func NewServer(filebase string, apiProxyPrefix string, staticPrefix string, filt
 	if err != nil {
 		return nil, err
 	}
-	glog.V(1).Infof("sec: %v", *secret)
+
+	proxyServer, err := newTopProxyHandler(&client, filebase, apiProxyPrefix, staticPrefix, filter, cfg, keepalive)
+	if err != nil {
+		return nil, err
+	}
+	mux := http.NewServeMux()
+	mux.Handle(apiProxyPrefix, proxyServer)
+	if filebase != "" {
+		// Require user to explicitly request this behavior rather than
+		// serving their working directory by default.
+		mux.Handle(staticPrefix, newFileHandler(staticPrefix, filebase))
+	}
 
 	return &Server{
 		handler: mux,
@@ -272,7 +273,7 @@ func newAuthenticatorFromClientCAFile(clientCAFile string) (authenticator.Reques
 	return x509.New(opts, x509.CommonNameUserConversion), nil
 }
 
-func newTopProxyHandler(filebase string, apiProxyPrefix string, staticPrefix string, filter *FilterServer, cfg *rest.Config, keepalive time.Duration) (http.Handler, error) {
+func newTopProxyHandler(centralclient *genericclient.Client, filebase string, apiProxyPrefix string, staticPrefix string, filter *FilterServer, cfg *rest.Config, keepalive time.Duration) (http.Handler, error) {
 	proxyServer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		glog.V(1).Infof("in top handler, use new cfg")
 		clientCAFile := "/Users/junzhou/.minikube/ca.crt"
@@ -301,18 +302,19 @@ func newTopProxyHandler(filebase string, apiProxyPrefix string, staticPrefix str
 
 		namespace := getNamespaceFromPath(r.URL.Path)
 		glog.V(1).Infof("namespace: [%s]", namespace)
+		var clusterName string
 		if namespace == "" {
 			// proxy to local
+			clusterName = "cluster1"
 		} else {
-			clusterName, err := getClusterFromNamespace(namespace)
+			clusterName, err = getClusterFromNamespace(*centralclient, namespace)
 			if err != nil {
 				glog.Errorf("%v", err)
 			}
 			glog.V(1).Infof("cluster for namespace [%s] is [%s]", namespace, clusterName)
 		}
 
-		newCfgFile := "/Users/junzhou/.kube/config-c2"
-		newCfg, err := clientcmd.BuildConfigFromFlags("", newCfgFile)
+		newCfg, err := getRestConfigForCluster(*centralclient, clusterName)
 		proxyToTarget, err := newDynamicProxyHandler(filebase, apiProxyPrefix, staticPrefix, filter, newCfg, keepalive, impersonateConfig)
 		if err != nil {
 			w.WriteHeader(501)
@@ -435,8 +437,29 @@ func getNamespaceFromPath(path string) string {
 	return sub[1]
 }
 
-func getClusterFromNamespace(namespace string) (string, error) {
-	return "cluster2", nil
+func getClusterFromNamespace(centralclient genericclient.Client, namespace string) (string, error) {
+	placement := &proxyv1a1.NamespacePlacement{}
+	err := centralclient.Get(context.TODO(), placement, "federation-system", namespace)
+	if err != nil {
+		return "", err
+	}
+
+	return placement.Spec.MasterCluster, nil
+}
+
+func getRestConfigForCluster(client genericclient.Client, clusterName string) (*rest.Config, error) {
+	//newCfgFile := "/Users/junzhou/.kube/config-c2"
+	//newCfg, err := clientcmd.BuildConfigFromFlags("", newCfgFile)
+	fedNamespace := "federation-system"
+	clusterNamespace := "kube-multicluster-public"
+	fedCluster := &fedv1a1.FederatedCluster{}
+	err := client.Get(context.TODO(), fedCluster, fedNamespace, clusterName)
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := ctlutil.BuildClusterConfig(fedCluster, client, fedNamespace, clusterNamespace)
+	return config, err
 }
 
 // Umask is a wrapper for `unix.Umask()` on non-Windows platforms
