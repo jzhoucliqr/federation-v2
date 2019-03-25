@@ -7,6 +7,7 @@ spec:
   masterCluster: cluster1
   workerClusters:
   - cluster1
+  - cluster2
 ---
 apiVersion: proxy.federation.k8s.io/v1alpha1
 kind: NamespacePlacement
@@ -15,4 +16,34 @@ metadata:
 spec:
   masterCluster: cluster2
   workerClusters:
+  - cluster2
+---
+apiVersion: proxy.federation.k8s.io/v1alpha1
+kind: NamespacePlacement
+metadata:
+  name: kube-system
+spec:
+  masterCluster: cluster1
+  workerClusters:
+  - cluster1
+  - cluster2
+---
+apiVersion: proxy.federation.k8s.io/v1alpha1
+kind: NamespacePlacement
+metadata:
+  name: federation-system
+spec:
+  masterCluster: cluster1
+  workerClusters:
+  - cluster1
+  - cluster2
+---
+apiVersion: proxy.federation.k8s.io/v1alpha1
+kind: NamespacePlacement
+metadata:
+  name: test-namespace
+spec:
+  masterCluster: cluster1
+  workerClusters:
+  - cluster1
   - cluster2

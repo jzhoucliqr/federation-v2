@@ -276,7 +276,7 @@ func newAuthenticatorFromClientCAFile(clientCAFile string) (authenticator.Reques
 func newTopProxyHandler(centralclient *genericclient.Client, filebase string, apiProxyPrefix string, staticPrefix string, filter *FilterServer, cfg *rest.Config, keepalive time.Duration) (http.Handler, error) {
 	proxyServer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		glog.V(1).Infof("in top handler, use new cfg")
-		clientCAFile := "/Users/junzhou/.minikube/ca.crt"
+		clientCAFile := "/var/lib/minikube/certs/ca.crt"
 		authenticator, err := newAuthenticatorFromClientCAFile(clientCAFile)
 		if err != nil {
 			w.WriteHeader(501)
@@ -300,27 +300,71 @@ func newTopProxyHandler(centralclient *genericclient.Client, filebase string, ap
 			Extra:    authResp.User.GetExtra(),
 		}
 
-		namespace := getNamespaceFromPath(r.URL.Path)
-		glog.V(1).Infof("namespace: [%s]", namespace)
+		namespace, resourceType, resourceName := getNamespaceTypeNameFromPath(r.URL.Path)
+		glog.V(1).Infof("namespace: %s, type: %s, name: %s", namespace, resourceType, resourceName)
 		var clusterName string
+		var proxyCfg *rest.Config
 		if namespace == "" {
-			// proxy to local
-			clusterName = "cluster1"
+			glog.V(1).Infof("no namespace, proxy to local")
+			proxyCfg = cfg
 		} else {
-			clusterName, err = getClusterFromNamespace(*centralclient, namespace)
-			if err != nil {
-				glog.Errorf("%v", err)
+			if needToGetFromMaster(resourceType) {
+				glog.V(1).Infof("get from master for resource type: %s", resourceType)
+				clusterName, err = getClusterFromNamespace(*centralclient, namespace)
+				if err != nil {
+					glog.Errorf("%v", err)
+				}
+				glog.V(1).Infof("cluster for namespace [%s] is [%s]", namespace, clusterName)
+				proxyCfg, err = getRestConfigForCluster(*centralclient, clusterName)
+				if err != nil {
+					glog.Errorf("%v", err)
+				}
+			} else if resourceName != "" && getClusterFromCache(namespace, resourceType, resourceName) != "" {
+				clusterName = getClusterFromCache(namespace, resourceType, resourceName)
+				// get from one worker
+				glog.V(1).Infof("get from a single worker for resource type: %s", resourceType)
+				glog.V(1).Infof("cluster for namespace [%s] is [%s]", namespace, clusterName)
+				proxyCfg, err = getRestConfigForCluster(*centralclient, clusterName)
+				if err != nil {
+					glog.Errorf("%v", err)
+				}
+			} else {
+				// get from all workers
+				glog.V(1).Infof("get from all workers for resource type: %s", resourceType)
+				clusterNames, err := getWorkerClustersFromNamespace(*centralclient, namespace)
+				if err != nil {
+					glog.Errorf("%v", err)
+				}
+				glog.V(1).Infof("cluster for namespace [%s] is [%v]", namespace, clusterNames)
+				if len(clusterNames) == 1 {
+					proxyCfg, err = getRestConfigForCluster(*centralclient, clusterNames[0])
+					if err != nil {
+						glog.Errorf("%v", err)
+					}
+				} else {
+					restConfigs, err := getRestConfigsForClusters(*centralclient, clusterNames)
+					if err != nil {
+						glog.Errorf("%v", err)
+					}
+					proxyAggregate, err := newAggregateProxyHandler(filebase, apiProxyPrefix, staticPrefix, filter, clusterNames, restConfigs, keepalive, impersonateConfig, namespace, resourceType, resourceName)
+					if err != nil {
+						glog.Errorf("%v", err)
+					}
+
+					proxyAggregate.ServeHTTP(w, r)
+				}
 			}
-			glog.V(1).Infof("cluster for namespace [%s] is [%s]", namespace, clusterName)
 		}
 
-		newCfg, err := getRestConfigForCluster(*centralclient, clusterName)
-		proxyToTarget, err := newDynamicProxyHandler(filebase, apiProxyPrefix, staticPrefix, filter, newCfg, keepalive, impersonateConfig)
-		if err != nil {
-			w.WriteHeader(501)
-			return
+		if proxyCfg != nil {
+			// get from single cluster, either local, or master, or one of the worker
+			proxyToTarget, err := newDynamicProxyHandler(filebase, apiProxyPrefix, staticPrefix, filter, proxyCfg, keepalive, impersonateConfig)
+			if err != nil {
+				w.WriteHeader(501)
+				return
+			}
+			proxyToTarget.ServeHTTP(w, r)
 		}
-		proxyToTarget.ServeHTTP(w, r)
 	})
 
 	return proxyServer, nil
@@ -388,9 +432,9 @@ func (s *Server) ListenUnix(path string) (net.Listener, error) {
 
 // ServeOnListener starts the server using given listener, loops forever.
 func (s *Server) ServeOnListener(l net.Listener) error {
-	clientca := "/Users/junzhou/.minikube/ca.crt"
-	cert := "/Users/junzhou/.minikube/apiserver.crt"
-	key := "/Users/junzhou/.minikube/apiserver.key"
+	clientca := "/var/lib/minikube/certs/ca.crt"
+	cert := "/var/lib/minikube/certs/apiserver.crt"
+	key := "/var/lib/minikube/certs/apiserver.key"
 	roots, err := certutil.NewPool(clientca)
 	if err != nil {
 		return err
@@ -427,14 +471,14 @@ func stripLeaveSlash(prefix string, h http.Handler) http.Handler {
 	})
 }
 
-func getNamespaceFromPath(path string) string {
+func getNamespaceTypeNameFromPath(path string) (string, string, string) {
 	glog.V(1).Infof("path: %s", path)
-	r, _ := regexp.Compile(".*/namespaces/([^/]*)/.*")
+	r, _ := regexp.Compile(".*/namespaces/([^/]*)/([^/]*)/?(.*)")
 	sub := r.FindStringSubmatch(path)
-	if len(sub) != 2 {
-		return ""
+	if len(sub) != 4 {
+		return "", "", ""
 	}
-	return sub[1]
+	return sub[1], sub[2], sub[3]
 }
 
 func getClusterFromNamespace(centralclient genericclient.Client, namespace string) (string, error) {
@@ -448,7 +492,6 @@ func getClusterFromNamespace(centralclient genericclient.Client, namespace strin
 }
 
 func getRestConfigForCluster(client genericclient.Client, clusterName string) (*rest.Config, error) {
-	//newCfgFile := "/Users/junzhou/.kube/config-c2"
 	//newCfg, err := clientcmd.BuildConfigFromFlags("", newCfgFile)
 	fedNamespace := "federation-system"
 	clusterNamespace := "kube-multicluster-public"
@@ -465,4 +508,51 @@ func getRestConfigForCluster(client genericclient.Client, clusterName string) (*
 // Umask is a wrapper for `unix.Umask()` on non-Windows platforms
 func umask(mask int) (old int, err error) {
 	return unix.Umask(mask), nil
+}
+
+func needToGetFromMaster(resourceType string) bool {
+	return strings.HasPrefix(resourceType, "Federated")
+}
+
+//cache for routes to clusters
+var clusterCache map[string]string = map[string]string{}
+
+func getClusterFromCache(namespace, resourceType, resourceName string) string {
+	key := fmt.Sprintf("%s/%s/%s", namespace, resourceType, resourceName)
+	return clusterCache[key]
+}
+
+func getWorkerClustersFromNamespace(centralclient genericclient.Client, namespace string) ([]string, error) {
+	placement := &proxyv1a1.NamespacePlacement{}
+	err := centralclient.Get(context.TODO(), placement, "federation-system", namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	return placement.Spec.WorkerClusters, nil
+}
+
+func getRestConfigsForClusters(client genericclient.Client, clusterNames []string) ([]*rest.Config, error) {
+	//newCfg, err := clientcmd.BuildConfigFromFlags("", newCfgFile)
+	configs := []*rest.Config{}
+	fedNamespace := "federation-system"
+	clusterNamespace := "kube-multicluster-public"
+	for _, clusterName := range clusterNames {
+		fedCluster := &fedv1a1.FederatedCluster{}
+		err := client.Get(context.TODO(), fedCluster, fedNamespace, clusterName)
+		if err != nil {
+			glog.Errorf("%v", err)
+			continue
+		}
+
+		config, err := ctlutil.BuildClusterConfig(fedCluster, client, fedNamespace, clusterNamespace)
+		if err != nil {
+			glog.Errorf("%v", err)
+			continue
+		}
+		if config != nil {
+			configs = append(configs, config)
+		}
+	}
+	return configs, nil
 }

@@ -1,0 +1,32 @@
+apiVersion: types.federation.k8s.io/v1alpha1
+kind: FederatedDeployment
+metadata:
+  name: test-deployment
+  namespace: federation-system
+spec:
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: nginx
+      template:
+        metadata:
+          labels:
+            app: nginx
+        spec:
+          containers:
+          - image: nginx
+            name: nginx
+  placement:
+    clusterNames:
+    - cluster2
+    - cluster1
+  overrides:
+  - clusterName: cluster2
+    clusterOverrides:
+    - path: spec.replicas
+      value: 5
